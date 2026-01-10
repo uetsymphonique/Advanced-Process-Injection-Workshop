@@ -66,11 +66,24 @@ flowchart TD
 
 ## Usage
 
-```
+```bash
 CWLProcessGhosting.exe
 ```
 
-(Note: Payload must be placed at `C:\temp\payload64.exe` before execution)
+### Default Payload Path
+
+By default, the executable looks for payload at: `C:\temp\payload64.exe`
+
+### Custom Payload Path (Compile-Time)
+
+You can specify a custom payload path at compile time:
+
+```bash
+# Build with custom payload path
+msbuild CWLProcessGhosting.sln /p:Configuration=Release /p:Platform=x64 /p:PreprocessorDefinitions="PAYLOAD_PATH=L\"D:\\custom\\payload.exe\""
+```
+
+See `build.md` for more details.
 
 ## IOCs for Detection
 
@@ -98,3 +111,4 @@ CWLProcessGhosting.exe
 - **File Lifecycle:** ProcessGhosting file disappears before process creation, Herpaderping modifies file after process creation
 - **Section Source:** ProcessGhosting creates section from delete-pending file, Herpaderping creates section from normal file
 - **Anti-Forensics:** ProcessGhosting removes file from disk before execution, Herpaderping modifies file after section creation
+

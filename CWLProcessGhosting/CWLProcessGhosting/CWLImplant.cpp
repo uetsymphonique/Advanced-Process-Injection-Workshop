@@ -3,10 +3,17 @@
 #include "CWLInc.h"
 #include <iostream>
 
+// Default payload path - can be overridden at compile time
+// Usage: msbuild ... /p:PreprocessorDefinitions="PAYLOAD_PATH=L\"D:\\custom\\path.exe\""
+#ifndef PAYLOAD_PATH
+#define PAYLOAD_PATH L"C:\\temp\\payload64.exe"
+#endif
+
 BYTE* GetPayloadBuffer(OUT size_t& p_size) {
-	HANDLE hFile = CreateFileW(L"C:\\temp\\payload64.exe", GENERIC_READ, 0, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+	wprintf(L"[*] Loading payload from: %s\n", PAYLOAD_PATH);
+	HANDLE hFile = CreateFileW(PAYLOAD_PATH, GENERIC_READ, 0, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
 	if (hFile == INVALID_HANDLE_VALUE) {
-		perror("[-] Unable to open payload file... \n");
+		wprintf(L"[-] Unable to open payload file: %s\n", PAYLOAD_PATH);
 		exit(-1);
 	}
 	p_size = GetFileSize(hFile, 0);
