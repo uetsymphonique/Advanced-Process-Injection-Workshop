@@ -101,20 +101,20 @@ After successful build, executable will be located at:
 By default, the payload path is `C:\temp\payload64.exe`. You can override this at compile time:
 
 ```bash
-# Custom payload path - Simple and Clean!
-msbuild CWLHerpaderping.sln /p:Configuration=Release /p:Platform=x64 /p:CustomPayloadPath="D:\malware\payload.exe"
+# Custom payload path - Use double backslashes!
+msbuild CWLHerpaderping.sln /p:Configuration=Release /p:Platform=x64 /p:CustomPayloadPath="D:\\malware\\payload.exe"
 
 # Another example
-msbuild CWLHerpaderping.sln /p:Configuration=Release /p:Platform=x64 /p:CustomPayloadPath="C:\Users\YourName\Desktop\implant.exe"
+msbuild CWLHerpaderping.sln /p:Configuration=Release /p:Platform=x64 /p:CustomPayloadPath="C:\\Users\\YourName\\Desktop\\implant.exe"
 
 # With Rebuild
-msbuild CWLHerpaderping.sln /p:Configuration=Release /p:Platform=x64 /p:CustomPayloadPath="C:\temp\implant.exe" /t:Rebuild
+msbuild CWLHerpaderping.sln /p:Configuration=Release /p:Platform=x64 /p:CustomPayloadPath="C:\\temp\\implant.exe" /t:Rebuild
 ```
 
 **Important Notes:**
 
-- Use single backslashes `\` in the path (MSBuild handles escaping automatically)
-- No need for `L\"` prefix or double backslashes
+- **Must use double backslashes `\\`** in the path (otherwise `\t` becomes tab, `\n` becomes newline, etc.)
+- No need for `L\"` prefix
 - The path is automatically converted to a wide string literal at compile time
 
 ## Example Build Commands

@@ -101,20 +101,20 @@ After successful build, executable will be located at:
 By default, the payload path is `C:\temp\payload64.exe`. You can override this at compile time:
 
 ```bash
-# Custom payload path - Simple and Clean!
-msbuild CWLProcessGhosting.sln /p:Configuration=Release /p:Platform=x64 /p:CustomPayloadPath="D:\malware\payload.exe"
+# Custom payload path - Use double backslashes!
+msbuild CWLProcessGhosting.sln /p:Configuration=Release /p:Platform=x64 /p:CustomPayloadPath="D:\\malware\\payload.exe"
 
 # Another example
-msbuild CWLProcessGhosting.sln /p:Configuration=Release /p:Platform=x64 /p:CustomPayloadPath="C:\Users\YourName\Desktop\implant.exe"
+msbuild CWLProcessGhosting.sln /p:Configuration=Release /p:Platform=x64 /p:CustomPayloadPath="C:\\Users\\YourName\\Desktop\\implant.exe"
 
 # With Rebuild
-msbuild CWLProcessGhosting.sln /p:Configuration=Release /p:Platform=x64 /p:CustomPayloadPath="C:\temp\implant.exe" /t:Rebuild
+msbuild CWLProcessGhosting.sln /p:Configuration=Release /p:Platform=x64 /p:CustomPayloadPath="C:\\temp\\implant.exe" /t:Rebuild
 ```
 
 **Important Notes:**
 
-- Use single backslashes `\` in the path (MSBuild handles escaping automatically)
-- No need for `L\"` prefix or double backslashes
+- **Must use double backslashes `\\`** in the path (otherwise `\t` becomes tab, `\n` becomes newline, etc.)
+- No need for `L\"` prefix
 - The path is automatically converted to a wide string literal at compile time
 
 ## Example Build Commands
@@ -137,44 +137,3 @@ msbuild CWLProcessGhosting.sln /p:Configuration=Release /p:Platform=x64 /m
 msbuild CWLProcessGhosting.sln /p:Configuration=Release /p:Platform=x64 /t:Clean
 msbuild CWLProcessGhosting.sln /p:Configuration=Release /p:Platform=x64 /t:Build
 ```
-
-## Troubleshooting
-
-### Error: MSBuild not found
-
-**Solution:** Use Developer Command Prompt or add MSBuild to PATH
-
-### Error: Cannot open file 'xxx.exe'
-
-**Solution:** Executable file is locked. Close running process or kill process:
-
-```powershell
-Get-Process | Where-Object {$_.Path -like "*CWLProcessGhosting*"} | Stop-Process -Force
-```
-
-### Error: Platform toolset not found
-
-**Solution:** Install Visual Studio Build Tools with C++ workload
-
-## Quick Build Script
-
-Create `build.bat` file in CWLProcessGhosting directory:
-
-```batch
-@echo off
-echo [*] Building CWLProcessGhosting Release x64...
-msbuild CWLProcessGhosting.sln /p:Configuration=Release /p:Platform=x64 /m
-if %ERRORLEVEL% EQU 0 (
-    echo [SUCCESS] Build completed!
-    echo [*] Output: x64\Release\CWLProcessGhosting.exe
-) else (
-    echo [ERROR] Build failed!
-)
-pause
-```
-
-## Notes
-
-- Payload file (`C:\temp\payload64.exe`) must exist before running CWLProcessGhosting.exe
-- Release build is recommended for production/testing
-- Debug build is useful for debugging and development
